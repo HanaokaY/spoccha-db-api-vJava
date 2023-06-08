@@ -1,108 +1,90 @@
 package spoccha.db.api.vjava;
 
-import java.util.ArrayList;
-import java.util.List;
-import io.vertx.core.Future;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.json.JsonObject;
-import io.vertx.sqlclient.Tuple;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
-import io.vertx.core.json.JsonArray;
-import io.vertx.pgclient.PgConnectOptions;
-import io.vertx.pgclient.PgPool;
-import io.vertx.sqlclient.PoolOptions;
-import io.vertx.sqlclient.Row;
-import io.vertx.sqlclient.RowSet;
+import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.BodyHandler;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainVerticle extends AbstractVerticle {
-  private PgPool pgPool;
 
-  @Override
-  public void start(Promise<Void> startPromise) {
-    // Initialize the PgPool instance
-    PgConnectOptions connectOptions = new PgConnectOptions()
-      .setPort(Integer.parseInt(System.getenv("DB_PORT")))
-      .setHost(System.getenv("DB_HOST"))
-      .setDatabase(System.getenv("DB_NAME"))
-      .setUser(System.getenv("DB_USER"))
-      .setPassword(System.getenv("DB_PASSWORD"));
+    private Map<Integer, String> allCities;
+    private Map<Integer, String> allPrefectures;
+    private Map<Integer, Map<Integer, Map<String, Object>>> allData;
 
-    PoolOptions poolOptions = new PoolOptions()
-      .setMaxSize(5);
+    public static void main(String[] args) {
+        Vertx.vertx().deployVerticle(new MainVerticle());
+    }
 
-    pgPool = PgPool.pool(vertx, connectOptions, poolOptions);
+    @Override
+    public void start(Promise<Void> startPromise) {
+        initializeData();
 
-    // routes
-    Router router = Router.router(vertx);
-    router.get("/api/v1/gym_informations/all_data").handler(this::handleGetAllData);
+        Router router = Router.router(vertx);
+        router.route().handler(BodyHandler.create());
 
-    vertx.createHttpServer().requestHandler(router).listen(8080);
-    startPromise.complete();
-  }
+        router.get("/api/v1/gym_informations/all_cities").handler(this::handleAllCities);
+        router.get("/api/v1/gym_informations/all_prefectures").handler(this::handleAllPrefectures);
+        router.get("/api/v1/gym_informations/all_data").handler(this::handleAllData);
 
-  // 都道府県、市区町村、体育館のデータを全て取得する
-
-  private void handleGetAllData(RoutingContext routingContext) {
-    // responseの型をJsonObjectに指定
-    JsonObject response = new JsonObject();
-    List<Future> cityQueries = new ArrayList<>();
-
-    pgPool.preparedQuery("SELECT * FROM prefectures")
-        .execute()
-        .onSuccess(prefecturesRows -> {
-            for (Row prefecture : prefecturesRows) {
-                String prefectureName = prefecture.getString("name");
-                Integer prefectureId = prefecture.getInteger("id");
-
-                Future<RowSet<Row>> cityQuery = pgPool.preparedQuery("SELECT * FROM cities WHERE prefecture_id = $1")
-                    .execute(Tuple.of(prefectureId))
-                    .compose(citiesRows -> {
-                        JsonObject cities = new JsonObject();
-
-                        for (Row city : citiesRows) {
-                            String cityName = city.getString("name");
-                            Integer cityId = city.getInteger("id");
-
-                            Future<RowSet<Row>> gymQuery = pgPool.preparedQuery("SELECT * FROM gyms WHERE city_id = $1")
-                                .execute(Tuple.of(cityId))
-                                .compose(gymsRows -> {
-                                    JsonArray gyms = new JsonArray();
-
-                                    for (Row gym : gymsRows) {
-                                        JsonObject gymObject = new JsonObject();
-                                        gymObject.put("id", gym.getInteger("id"));
-                                        gymObject.put("name", gym.getString("name"));
-                                        gymObject.put("schedule_url", gym.getString("schedule_url"));
-                                        gyms.add(gymObject);
-                                    }
-
-                                    cities.put(cityName, gyms);
-                                    return Future.succeededFuture();
-                                });
-
-                            cityQueries.add(gymQuery);
-                        }
-
-                        response.put(prefectureName, cities);
-                        return Future.succeededFuture();
-                    });
-
-                cityQueries.add(cityQuery);
+        HttpServer server = vertx.createHttpServer();
+        server.requestHandler(router).listen(8080, result -> {
+            if (result.succeeded()) {
+                System.out.println("Server started on port 8080");
+                startPromise.complete();
+            } else {
+                startPromise.fail(result.cause());
             }
-        })
-        .onFailure(err -> routingContext.response()
-            .setStatusCode(500).end(err.getMessage()));
+        });
+    }
 
-    CompositeFuture.all(cityQueries).onSuccess(v -> routingContext.response()
-        .putHeader("content-type", "application/json")
-        // responseがJsonObjectであるため、encodeメソッドが利用可能
-        .end(response.encode()))
-        .onFailure(err -> routingContext.response()
-            .setStatusCode(500).end(err.getMessage()));
-  }
-  // 他のハンドラーのメソッドは下記に書いていく
+    private void initializeData() {
+        allCities = new HashMap<>();
+        allCities.put(1, "City A");
+        allCities.put(2, "City B");
+        allCities.put(3, "City C");
 
+        allPrefectures = new HashMap<>();
+        allPrefectures.put(1, "Prefecture X");
+        allPrefectures.put(2, "Prefecture Y");
+        allPrefectures.put(3, "Prefecture Z");
+
+        allData = new HashMap<>();
+        Map<Integer, Map<String, Object>> cityData = new HashMap<>();
+        cityData.put(1, createGymData("Gym 1", "Schedule 1", "Schedule 2"));
+        cityData.put(2, createGymData("Gym 2", "Schedule 3", "Schedule 4"));
+        cityData.put(3, createGymData("Gym 3", "Schedule 5", "Schedule 6"));
+        allData.put(1, cityData);
+    }
+
+    private Map<String, Object> createGymData(String name, String... schedules) {
+        Map<String, Object> gymData = new HashMap<>();
+        gymData.put("name", name);
+        gymData.put("schedule_urls", schedules);
+        return gymData;
+    }
+
+    private void handleAllCities(RoutingContext routingContext) {
+        HttpServerResponse response = routingContext.response();
+        response.putHeader("Content-Type", "application/json");
+        response.end(allCities.toString());
+    }
+
+    private void handleAllPrefectures(RoutingContext routingContext) {
+        HttpServerResponse response = routingContext.response();
+        response.putHeader("Content-Type", "application/json");
+        response.end(allPrefectures.toString());
+    }
+
+    private void handleAllData(RoutingContext routingContext) {
+        HttpServerResponse response = routingContext.response();
+        response.putHeader("Content-Type", "application/json");
+        response.end(allData.toString());
+    }
 }

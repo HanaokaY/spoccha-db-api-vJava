@@ -13,8 +13,6 @@ dependencies {
     implementation 'io.vertx:vertx-jdbc-client:4.1.5'
     implementation 'io.vertx:vertx-pg-client:4.1.5'
     implementation 'io.github.cdimascio:java-dotenv:5.2.2'
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.1'
-    implementation 'io.vertx:vertx-core:4.1.1'
 }
 
 java {
@@ -24,14 +22,19 @@ java {
 }
 
 application {
-    mainClass = 'spoccha.db.api.vjava.Launcher'
+    mainClass = 'spoccha.db.api.vjava.MainVerticle'
 }
 
 jar {
+    duplicatesStrategy = 'exclude'
     manifest {
-        attributes 'Main-Class': 'spoccha.db.api.vjava.Launcher'
+        attributes 'Main-Class': 'spoccha.db.api.vjava.MainVerticle'
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 }
+
 
 tasks.named('test') {
     useJUnitPlatform()
