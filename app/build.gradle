@@ -10,7 +10,11 @@ repositories {
 dependencies {
     implementation 'io.vertx:vertx-core:4.1.1'
     implementation 'io.vertx:vertx-web:4.1.1'
+    implementation 'io.vertx:vertx-jdbc-client:4.1.5'
+    implementation 'io.vertx:vertx-pg-client:4.1.5'
+    implementation 'io.github.cdimascio:java-dotenv:5.2.2'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.9.1'
+    implementation 'io.vertx:vertx-core:4.1.1'
 }
 
 java {
@@ -20,7 +24,13 @@ java {
 }
 
 application {
-    mainClass = 'spoccha.db.api.vjava.App'
+    mainClass = 'spoccha.db.api.vjava.Launcher'
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'spoccha.db.api.vjava.Launcher'
+    }
 }
 
 tasks.named('test') {
