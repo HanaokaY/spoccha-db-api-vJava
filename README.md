@@ -1,6 +1,6 @@
-# spoccha-db-api-vJava
+# 【未完成】spoccha-db-api-vJava
 
-This is a simple Java application built with Vert.x to demonstrate a basic API.
+Vert.xを使ってAPI開発をしてみる。
 
 ## 環境
 Java 17
