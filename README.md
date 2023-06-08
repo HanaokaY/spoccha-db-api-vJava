@@ -1,4 +1,4 @@
-# 【未完成】spoccha-db-api-vVertx
+# 【未完成】spoccha-db-api-vJava
 
 Vert.xを使ってAPI開発をしてみる。
 
