@@ -10,9 +10,13 @@ repositories {
 dependencies {
     implementation 'io.vertx:vertx-core:4.1.1'
     implementation 'io.vertx:vertx-web:4.1.1'
-    implementation 'io.vertx:vertx-jdbc-client:4.1.5'
+    implementation 'io.vertx:vertx-jdbc-client:4.1.1'
+    implementation 'io.agroal:agroal-api:1.10'
+    implementation 'io.agroal:agroal-pool:1.10'
     implementation 'io.vertx:vertx-pg-client:4.1.5'
     implementation 'io.github.cdimascio:java-dotenv:5.2.2'
+    implementation 'org.postgresql:postgresql:42.2.23'
+    implementation 'org.slf4j:slf4j-api:1.7.32'
 }
 
 java {
@@ -34,7 +38,6 @@ jar {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 }
-
 
 tasks.named('test') {
     useJUnitPlatform()
