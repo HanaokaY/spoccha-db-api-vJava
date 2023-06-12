@@ -1,108 +1,164 @@
 package spoccha.db.api.vjava;
 
-import java.util.ArrayList;
-import java.util.List;
-import io.vertx.core.Future;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.json.JsonObject;
-import io.vertx.sqlclient.Tuple;
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.Promise;
-import io.vertx.core.json.JsonArray;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.pgclient.PgPool;
-import io.vertx.sqlclient.PoolOptions;
-import io.vertx.sqlclient.Row;
-import io.vertx.sqlclient.RowSet;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.BodyHandler;
+import io.vertx.jdbcclient.JDBCConnectOptions;
+import io.vertx.jdbcclient.JDBCPool;
+import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.RowSet;
+import io.vertx.sqlclient.Tuple;
+import io.vertx.sqlclient.Pool;
+import io.vertx.sqlclient.PoolOptions;
+import io.vertx.sqlclient.SqlConnectOptions;
+import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonObject;
+import io.github.cdimascio.dotenv.Dotenv;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainVerticle extends AbstractVerticle {
-  private PgPool pgPool;
 
-  @Override
-  public void start(Promise<Void> startPromise) {
-    // Initialize the PgPool instance
-    PgConnectOptions connectOptions = new PgConnectOptions()
-      .setPort(Integer.parseInt(System.getenv("DB_PORT")))
-      .setHost(System.getenv("DB_HOST"))
-      .setDatabase(System.getenv("DB_NAME"))
-      .setUser(System.getenv("DB_USER"))
-      .setPassword(System.getenv("DB_PASSWORD"));
+    private Map<Integer, Map<Integer, Map<String, Object>>> allData;
+    private Pool dbPool;
 
-    PoolOptions poolOptions = new PoolOptions()
-      .setMaxSize(5);
+    public static void main(String[] args) {
+        Vertx.vertx().deployVerticle(new MainVerticle());
+    }
 
-    pgPool = PgPool.pool(vertx, connectOptions, poolOptions);
+    @Override
+    public void start(Promise<Void> startPromise) {
+        initializeDbPool();
 
-    // routes
-    Router router = Router.router(vertx);
-    router.get("/api/v1/gym_informations/all_data").handler(this::handleGetAllData);
+        Router router = Router.router(vertx);
+        router.route().handler(BodyHandler.create());
 
-    vertx.createHttpServer().requestHandler(router).listen(8080);
-    startPromise.complete();
-  }
+        router.get("/api/v1/gym_informations/all_data").handler(this::handleAllData);
 
-  // 都道府県、市区町村、体育館のデータを全て取得する
+        router.get("/api/v1/dbtest").handler(this::handleDbTest);
 
-  private void handleGetAllData(RoutingContext routingContext) {
-    // responseの型をJsonObjectに指定
-    JsonObject response = new JsonObject();
-    List<Future> cityQueries = new ArrayList<>();
+        HttpServer server = vertx.createHttpServer();
+        server.requestHandler(router).listen(3000, result -> {
+            if (result.succeeded()) {
+                System.out.println("Server started on port 3000");
+                startPromise.complete();
+            } else {
+                startPromise.fail(result.cause());
+            }
+        });
+    }
 
-    pgPool.preparedQuery("SELECT * FROM prefectures")
-        .execute()
-        .onSuccess(prefecturesRows -> {
-            for (Row prefecture : prefecturesRows) {
-                String prefectureName = prefecture.getString("name");
-                Integer prefectureId = prefecture.getInteger("id");
+    private void initializeDbPool() {
+        Dotenv dotenv = Dotenv.configure().load();
+    
+        try {
+            String env = System.getProperty("env");
+            String dbUrl = null;
+    
+            if (env != null && env.equals("production")) {
+                dbUrl = dotenv.get("DATABASE_URL");
+            } else {
+                dbUrl = dotenv.get("DATABASE_URL").substring(5);
+            }
+    
+            String username = "";
+            String password = "";
+            String host = "";
+            int port = 0;
+            String database = "";
+    
+            Pattern pattern = Pattern.compile("postgresql://(.*):(\\d+)/([^\\?]*)\\?user=([^&]*)&password=(.*)");
+            Matcher matcher = pattern.matcher(dbUrl);
+    
+            if (matcher.find()) {
+                host = matcher.group(1);
+                port = Integer.parseInt(matcher.group(2));
+                database = matcher.group(3);
+                username = matcher.group(4);
+                password = matcher.group(5);
+            } else {
+                throw new Exception("Unable to parse DATABASE_URL");
+            }
+    
+            PgConnectOptions connectOptions = new PgConnectOptions()
+                    .setPort(port)
+                    .setHost(host)
+                    .setDatabase(database)
+                    .setUser(username)
+                    .setPassword(password)
+                    .setSsl(true)
+                    .setTrustAll(true);
+    
+            PoolOptions poolOptions = new PoolOptions()
+                    .setMaxSize(5);
+    
+            dbPool = PgPool.pool(vertx, connectOptions, poolOptions);
+    
+            dbPool.query("SELECT 1")
+                .execute(ar -> {
+                    if (ar.failed()) {
+                        System.err.println("Failed to establish a connection with the database: " + ar.cause().getMessage());
+                    } else {
+                        System.out.println("Successfully connected to the database");
+                    }
+                });
+        } catch (Exception e) {
+            System.err.println("Failed to initialize the database connection pool: " + e.getMessage());
+        }
+    }
 
-                Future<RowSet<Row>> cityQuery = pgPool.preparedQuery("SELECT * FROM cities WHERE prefecture_id = $1")
-                    .execute(Tuple.of(prefectureId))
-                    .compose(citiesRows -> {
-                        JsonObject cities = new JsonObject();
+    private void handleAllData(RoutingContext routingContext) {
+        HttpServerResponse response = routingContext.response();
+        response.putHeader("Content-Type", "application/json");
 
-                        for (Row city : citiesRows) {
-                            String cityName = city.getString("name");
-                            Integer cityId = city.getInteger("id");
+        dbPool.query("SELECT * FROM prefectures p " +
+                "JOIN cities c ON p.id = c.prefecture_id " +
+                "JOIN gyms g ON c.id = g.city_id " +
+                "JOIN schedule_urls s ON g.id = s.gym_id")
+                .execute(ar -> {
+                    if (ar.failed()) {
+                        System.err.println("Failed to fetch data from the database: " + ar.cause().getMessage());
+                        response.setStatusCode(500).end();
+                    } else {
+                        RowSet<Row> result = ar.result();
+                        Map<String, Object> responseMap = new HashMap<>();
 
-                            Future<RowSet<Row>> gymQuery = pgPool.preparedQuery("SELECT * FROM gyms WHERE city_id = $1")
-                                .execute(Tuple.of(cityId))
-                                .compose(gymsRows -> {
-                                    JsonArray gyms = new JsonArray();
-
-                                    for (Row gym : gymsRows) {
-                                        JsonObject gymObject = new JsonObject();
-                                        gymObject.put("id", gym.getInteger("id"));
-                                        gymObject.put("name", gym.getString("name"));
-                                        gymObject.put("schedule_url", gym.getString("schedule_url"));
-                                        gyms.add(gymObject);
-                                    }
-
-                                    cities.put(cityName, gyms);
-                                    return Future.succeededFuture();
-                                });
-
-                            cityQueries.add(gymQuery);
+                        for (Row row : result) {
+                            // process each row and build responseMap
                         }
 
-                        response.put(prefectureName, cities);
-                        return Future.succeededFuture();
-                    });
+                        String responseJson = Json.encode(responseMap);
+                        response.end(responseJson);
+                    }
+                });
+    }
 
-                cityQueries.add(cityQuery);
-            }
-        })
-        .onFailure(err -> routingContext.response()
-            .setStatusCode(500).end(err.getMessage()));
-
-    CompositeFuture.all(cityQueries).onSuccess(v -> routingContext.response()
-        .putHeader("content-type", "application/json")
-        // responseがJsonObjectであるため、encodeメソッドが利用可能
-        .end(response.encode()))
-        .onFailure(err -> routingContext.response()
-            .setStatusCode(500).end(err.getMessage()));
-  }
-  // 他のハンドラーのメソッドは下記に書いていく
+    private void handleDbTest(RoutingContext routingContext) {
+        HttpServerResponse response = routingContext.response();
+        dbPool.query("SELECT 1")
+            .execute(ar -> {
+                if (ar.failed()) {
+                    response.putHeader("content-type", "application/json").end(Json.encodePrettily(
+                            new JsonObject().put("status", "failure").put("message", "Failed to establish a connection with the database: " + ar.cause().getMessage())
+                    ));
+                } else {
+                    response.putHeader("content-type", "application/json").end(Json.encodePrettily(
+                            new JsonObject().put("status", "success").put("message", "Successfully connected to the database")
+                    ));
+                }
+            });
+    }
 
 }

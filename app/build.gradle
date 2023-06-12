@@ -10,11 +10,13 @@ repositories {
 dependencies {
     implementation 'io.vertx:vertx-core:4.1.1'
     implementation 'io.vertx:vertx-web:4.1.1'
-    implementation 'io.vertx:vertx-jdbc-client:4.1.5'
+    implementation 'io.vertx:vertx-jdbc-client:4.1.1'
+    implementation 'io.agroal:agroal-api:1.10'
+    implementation 'io.agroal:agroal-pool:1.10'
     implementation 'io.vertx:vertx-pg-client:4.1.5'
     implementation 'io.github.cdimascio:java-dotenv:5.2.2'
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.1'
-    implementation 'io.vertx:vertx-core:4.1.1'
+    implementation 'org.postgresql:postgresql:42.2.23'
+    implementation 'org.slf4j:slf4j-api:1.7.32'
 }
 
 java {
@@ -24,12 +26,16 @@ java {
 }
 
 application {
-    mainClass = 'spoccha.db.api.vjava.Launcher'
+    mainClass = 'spoccha.db.api.vjava.MainVerticle'
 }
 
 jar {
+    duplicatesStrategy = 'exclude'
     manifest {
-        attributes 'Main-Class': 'spoccha.db.api.vjava.Launcher'
+        attributes 'Main-Class': 'spoccha.db.api.vjava.MainVerticle'
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 }
 
