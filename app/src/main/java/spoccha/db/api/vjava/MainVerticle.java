@@ -61,62 +61,58 @@ public class MainVerticle extends AbstractVerticle {
     }
 
     private void initializeDbPool() {
-        Dotenv dotenv = Dotenv.configure().load();
+        String env = System.getenv("env");
+        String dbUrl = null;
     
-        try {
-            String env = System.getProperty("env");
-            String dbUrl = null;
-    
-            if (env != null && env.equals("production")) {
-                dbUrl = dotenv.get("DATABASE_URL");
-            } else {
-                dbUrl = dotenv.get("DATABASE_URL").substring(5);
-            }
-    
-            String username = "";
-            String password = "";
-            String host = "";
-            int port = 0;
-            String database = "";
-    
-            Pattern pattern = Pattern.compile("postgresql://(.*):(\\d+)/([^\\?]*)\\?user=([^&]*)&password=(.*)");
-            Matcher matcher = pattern.matcher(dbUrl);
-    
-            if (matcher.find()) {
-                host = matcher.group(1);
-                port = Integer.parseInt(matcher.group(2));
-                database = matcher.group(3);
-                username = matcher.group(4);
-                password = matcher.group(5);
-            } else {
-                throw new Exception("Unable to parse DATABASE_URL");
-            }
-    
-            PgConnectOptions connectOptions = new PgConnectOptions()
-                    .setPort(port)
-                    .setHost(host)
-                    .setDatabase(database)
-                    .setUser(username)
-                    .setPassword(password)
-                    .setSsl(true)
-                    .setTrustAll(true);
-    
-            PoolOptions poolOptions = new PoolOptions()
-                    .setMaxSize(5);
-    
-            dbPool = PgPool.pool(vertx, connectOptions, poolOptions);
-    
-            dbPool.query("SELECT 1")
-                .execute(ar -> {
-                    if (ar.failed()) {
-                        System.err.println("Failed to establish a connection with the database: " + ar.cause().getMessage());
-                    } else {
-                        System.out.println("Successfully connected to the database");
-                    }
-                });
-        } catch (Exception e) {
-            System.err.println("Failed to initialize the database connection pool: " + e.getMessage());
+        if (env != null && env.equals("production")) {
+            dbUrl = System.getenv("DATABASE_URL");
+        } else {
+            Dotenv dotenv = Dotenv.configure().load();
+            dbUrl = dotenv.get("DATABASE").substring(5);
         }
+
+        String username = "";
+        String password = "";
+        String host = "";
+        int port = 0;
+        String database = "";
+
+        Pattern pattern = Pattern.compile("postgresql://(.*):(\\d+)/([^\\?]*)\\?user=([^&]*)&password=(.*)");
+        Matcher matcher = pattern.matcher(dbUrl);
+
+        if (matcher.find()) {
+            host = matcher.group(1);
+            port = Integer.parseInt(matcher.group(2));
+            database = matcher.group(3);
+            username = matcher.group(4);
+            password = matcher.group(5);
+        } else {
+            System.err.println("Unable to parse DATABASE_URL");
+            return;
+        }
+
+        PgConnectOptions connectOptions = new PgConnectOptions()
+                .setPort(port)
+                .setHost(host)
+                .setDatabase(database)
+                .setUser(username)
+                .setPassword(password)
+                .setSsl(true)
+                .setTrustAll(true);
+
+        PoolOptions poolOptions = new PoolOptions()
+                .setMaxSize(5);
+
+        dbPool = PgPool.pool(vertx, connectOptions, poolOptions);
+
+        dbPool.query("SELECT 1")
+            .execute(ar -> {
+                if (ar.failed()) {
+                    System.err.println("Failed to establish a connection with the database: " + ar.cause().getMessage());
+                } else {
+                    System.out.println("Successfully connected to the database");
+                }
+            });
     }
 
     private void handleAllData(RoutingContext routingContext) {
@@ -160,5 +156,4 @@ public class MainVerticle extends AbstractVerticle {
                 }
             });
     }
-
 }
