@@ -1,5 +1,9 @@
 package spoccha.db.api.vjava;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.pgclient.PgPool;
 import io.vertx.core.AbstractVerticle;
@@ -43,6 +47,8 @@ public class MainVerticle extends AbstractVerticle {
 
         router.get("/api/v1/gym_informations/all_data").handler(this::handleAllData);
 
+        router.get("/api/v1/dbtest").handler(this::handleDbTest);
+
         HttpServer server = vertx.createHttpServer();
         server.requestHandler(router).listen(3000, result -> {
             if (result.succeeded()) {
@@ -55,38 +61,62 @@ public class MainVerticle extends AbstractVerticle {
     }
 
     private void initializeDbPool() {
-
         Dotenv dotenv = Dotenv.configure().load();
     
-        String dbHost = dotenv.get("DB_HOST");
-        int dbPort = Integer.parseInt(dotenv.get("DB_PORT"));
-        String dbName = dotenv.get("DB_NAME");
-        String dbUrl = dotenv.get("DB_URL");
-        String dbUser = dotenv.get("DB_USER");
-        String dbPassword = dotenv.get("DB_PASSWORD");
-
-        PgConnectOptions connectOptions = new PgConnectOptions()
-            .setHost(dbHost)
-            .setPort(dbPort)
-            .setDatabase(dbName)
-            .setUser(dbUser)
-            .setPassword(dbPassword);
+        try {
+            String env = System.getProperty("env");
+            String dbUrl = null;
     
-        PoolOptions poolOptions = new PoolOptions()
-                .setMaxSize(5);
+            if (env != null && env.equals("production")) {
+                dbUrl = dotenv.get("DATABASE_URL");
+            } else {
+                dbUrl = dotenv.get("DATABASE_URL").substring(5);
+            }
     
-        dbPool = PgPool.pool(vertx, connectOptions, poolOptions);
+            String username = "";
+            String password = "";
+            String host = "";
+            int port = 0;
+            String database = "";
     
-
-        // Test database connection
-        dbPool.query("SELECT 1")
-            .execute(ar -> {
-                if (ar.failed()) {
-                    System.err.println("Failed to establish a connection with the database: " + ar.cause().getMessage());
-                } else {
-                    System.out.println("Successfully connected to the database");
-                }
-            });
+            Pattern pattern = Pattern.compile("postgresql://(.*):(\\d+)/([^\\?]*)\\?user=([^&]*)&password=(.*)");
+            Matcher matcher = pattern.matcher(dbUrl);
+    
+            if (matcher.find()) {
+                host = matcher.group(1);
+                port = Integer.parseInt(matcher.group(2));
+                database = matcher.group(3);
+                username = matcher.group(4);
+                password = matcher.group(5);
+            } else {
+                throw new Exception("Unable to parse DATABASE_URL");
+            }
+    
+            PgConnectOptions connectOptions = new PgConnectOptions()
+                    .setPort(port)
+                    .setHost(host)
+                    .setDatabase(database)
+                    .setUser(username)
+                    .setPassword(password)
+                    .setSsl(true)
+                    .setTrustAll(true);
+    
+            PoolOptions poolOptions = new PoolOptions()
+                    .setMaxSize(5);
+    
+            dbPool = PgPool.pool(vertx, connectOptions, poolOptions);
+    
+            dbPool.query("SELECT 1")
+                .execute(ar -> {
+                    if (ar.failed()) {
+                        System.err.println("Failed to establish a connection with the database: " + ar.cause().getMessage());
+                    } else {
+                        System.out.println("Successfully connected to the database");
+                    }
+                });
+        } catch (Exception e) {
+            System.err.println("Failed to initialize the database connection pool: " + e.getMessage());
+        }
     }
 
     private void handleAllData(RoutingContext routingContext) {
@@ -113,6 +143,22 @@ public class MainVerticle extends AbstractVerticle {
                         response.end(responseJson);
                     }
                 });
+    }
+
+    private void handleDbTest(RoutingContext routingContext) {
+        HttpServerResponse response = routingContext.response();
+        dbPool.query("SELECT 1")
+            .execute(ar -> {
+                if (ar.failed()) {
+                    response.putHeader("content-type", "application/json").end(Json.encodePrettily(
+                            new JsonObject().put("status", "failure").put("message", "Failed to establish a connection with the database: " + ar.cause().getMessage())
+                    ));
+                } else {
+                    response.putHeader("content-type", "application/json").end(Json.encodePrettily(
+                            new JsonObject().put("status", "success").put("message", "Successfully connected to the database")
+                    ));
+                }
+            });
     }
 
 }

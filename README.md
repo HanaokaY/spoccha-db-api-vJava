@@ -10,3 +10,4 @@ junit-jupiter 5.9.1
 
 ## 参考記事
 [Vert.xで非同期にDB処理](https://vertx.io/docs/vertx-pg-client/java/)
+[Javaでheroku PostgrSQLに接続する方法](https://github.com/heroku/devcenter-java-database)
