@@ -93,7 +93,8 @@ public class MainVerticle extends AbstractVerticle {
             password = matcher.group(5);
         } else {
             System.err.println("Unable to parse DATABASE_URL");
-            return;
+            promise.fail(new RuntimeException("Unable to parse DATABASE_URL"));
+            return promise.future();
         }
 
         PgConnectOptions connectOptions = new PgConnectOptions()
