@@ -1,33 +1,27 @@
 package spoccha.db.api.vjava;
 
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.regex.Pattern;
-import java.util.regex.Matcher;
-import io.vertx.pgclient.PgConnectOptions;
-import io.vertx.pgclient.PgPool;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonObject;
+import io.vertx.pgclient.PgConnectOptions;
+import io.vertx.pgclient.PgPool;
+import io.vertx.sqlclient.Pool;
+import io.vertx.sqlclient.PoolOptions;
+import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.RowSet;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
-import io.vertx.jdbcclient.JDBCConnectOptions;
-import io.vertx.jdbcclient.JDBCPool;
-import io.vertx.sqlclient.Row;
-import io.vertx.sqlclient.RowSet;
-import io.vertx.sqlclient.Tuple;
-import io.vertx.sqlclient.Pool;
-import io.vertx.sqlclient.PoolOptions;
-import io.vertx.sqlclient.SqlConnectOptions;
-import io.vertx.core.json.Json;
-import io.vertx.core.json.JsonObject;
 import io.github.cdimascio.dotenv.Dotenv;
-
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import io.vertx.core.Future;
 
 public class MainVerticle extends AbstractVerticle {
 
@@ -40,8 +34,16 @@ public class MainVerticle extends AbstractVerticle {
 
     @Override
     public void start(Promise<Void> startPromise) {
-        initializeDbPool();
+        initializeDbPool().onComplete(ar -> {
+            if (ar.failed()) {
+                startPromise.fail(ar.cause());
+            } else {
+                startHttpServer(startPromise);
+            }
+        });
+    }
 
+    private void startHttpServer(Promise<Void> startPromise) {
         Router router = Router.router(vertx);
         router.route().handler(BodyHandler.create());
 
@@ -59,10 +61,11 @@ public class MainVerticle extends AbstractVerticle {
                 startPromise.fail(result.cause());
             }
         });
-        
     }
 
-    private void initializeDbPool() {
+    private Future<Void> initializeDbPool() {
+        Promise<Void> promise = Promise.promise();
+
         String env = System.getenv("env");
         String dbUrl = null;
     
@@ -111,10 +114,14 @@ public class MainVerticle extends AbstractVerticle {
             .execute(ar -> {
                 if (ar.failed()) {
                     System.err.println("Failed to establish a connection with the database: " + ar.cause().getMessage());
+                    promise.fail(ar.cause());
                 } else {
                     System.out.println("Successfully connected to the database");
+                    promise.complete();
                 }
             });
+        
+        return promise.future();
     }
 
     private void handleAllData(RoutingContext routingContext) {
