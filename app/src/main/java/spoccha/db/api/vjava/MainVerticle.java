@@ -34,8 +34,13 @@ public class MainVerticle extends AbstractVerticle {
 
     @Override
     public void start(Promise<Void> startPromise) {
-        initializeDbPool();
-        startHttpServer(startPromise);
+        initializeDbPool().onComplete(dbInitResult -> {
+            if (dbInitResult.succeeded()) {
+                startHttpServer(startPromise);
+            } else {
+                startPromise.fail(dbInitResult.cause());
+            }
+        });
     }
 
     private void startHttpServer(Promise<Void> startPromise) {
