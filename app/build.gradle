@@ -42,3 +42,6 @@ jar {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// Heroku deployment task
+task stage(dependsOn: ['clean', 'installDist'])
