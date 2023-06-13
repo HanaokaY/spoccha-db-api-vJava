@@ -34,13 +34,8 @@ public class MainVerticle extends AbstractVerticle {
 
     @Override
     public void start(Promise<Void> startPromise) {
-        initializeDbPool().onComplete(ar -> {
-            if (ar.failed()) {
-                startPromise.fail(ar.cause());
-            } else {
-                startHttpServer(startPromise);
-            }
-        });
+        initializeDbPool();
+        startHttpServer(startPromise);
     }
 
     private void startHttpServer(Promise<Void> startPromise) {
@@ -128,7 +123,13 @@ public class MainVerticle extends AbstractVerticle {
     private void handleAllData(RoutingContext routingContext) {
         HttpServerResponse response = routingContext.response();
         response.putHeader("Content-Type", "application/json");
-
+    
+        if (dbPool == null) {
+            System.err.println("Failed to establish a connection with the database");
+            response.setStatusCode(500).end();
+            return;
+        }
+    
         dbPool.query("SELECT * FROM prefectures p " +
                 "JOIN cities c ON p.id = c.prefecture_id " +
                 "JOIN gyms g ON c.id = g.city_id " +
@@ -153,6 +154,13 @@ public class MainVerticle extends AbstractVerticle {
 
     private void handleDbTest(RoutingContext routingContext) {
         HttpServerResponse response = routingContext.response();
+        if (dbPool == null) {
+            response.putHeader("content-type", "application/json").end(Json.encodePrettily(
+                    new JsonObject().put("status", "failure").put("message", "Failed to establish a connection with the database")
+            ));
+            return;
+        }
+    
         dbPool.query("SELECT 1")
             .execute(ar -> {
                 if (ar.failed()) {
