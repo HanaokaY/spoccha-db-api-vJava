@@ -78,6 +78,7 @@ public class MainVerticle extends AbstractVerticle {
         System.out.println("Getting DATABASE_URL...");
 
         if (isProduction) {
+            System.out.println("Loading DATABASE_URL from environment variable...");
             dbUrl = System.getenv("DATABASE_URL");
         } else {
             System.out.println("Loading .env file...");
@@ -114,6 +115,13 @@ public class MainVerticle extends AbstractVerticle {
             return promise.future();
         }
     
+        System.out.println("DATABASE_URL check");
+        System.out.println("username => "+username);
+        System.out.println("password => "+password);
+        System.out.println("host => "+host);
+        System.out.println("port => "+port);
+        System.out.println("database => "+database);
+
         System.out.println("Creating database connection pool...");
     
         PgConnectOptions connectOptions = new PgConnectOptions()
