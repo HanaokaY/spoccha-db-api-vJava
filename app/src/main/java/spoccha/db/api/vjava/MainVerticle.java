@@ -65,10 +65,10 @@ public class MainVerticle extends AbstractVerticle {
         String dbUrl = null;
     
         if (env != null && env.equals("production")) {
-            dbUrl = System.getenv("DATABASE_URL");
+            dbUrl = System.getenv("DATABASE");
         } else {
             Dotenv dotenv = Dotenv.configure().load();
-            dbUrl = dotenv.get("DATABASE").substring(5);
+            dbUrl = dotenv.get("DATABASE_URL").substring(5);
         }
 
         String username = "";
