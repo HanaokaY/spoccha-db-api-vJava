@@ -71,12 +71,13 @@ public class MainVerticle extends AbstractVerticle {
     private Future<Void> initializeDbPool() {
         Promise<Void> promise = Promise.promise();
     
-        String env = System.getenv("env");
+        String dyno = System.getenv("DYNO");
+        boolean isProduction = (dyno != null && !dyno.isEmpty());
         String dbUrl = null;
 
         System.out.println("Getting DATABASE_URL...");
 
-        if (env != null && env.equals("production")) {
+        if (isProduction) {
             dbUrl = System.getenv("DATABASE_URL");
         } else {
             System.out.println("Loading .env file...");
