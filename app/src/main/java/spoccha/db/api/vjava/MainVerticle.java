@@ -50,14 +50,16 @@ public class MainVerticle extends AbstractVerticle {
         router.get("/api/v1/dbtest").handler(this::handleDbTest);
 
         HttpServer server = vertx.createHttpServer();
-        server.requestHandler(router).listen(3000, result -> {
+        int port = Integer.parseInt(System.getenv().get("PORT"));
+        server.requestHandler(router).listen(port, result -> {
             if (result.succeeded()) {
-                System.out.println("Server started on port 3000");
+                System.out.println("Server started on port " + port);
                 startPromise.complete();
             } else {
                 startPromise.fail(result.cause());
             }
         });
+        
     }
 
     private void initializeDbPool() {
