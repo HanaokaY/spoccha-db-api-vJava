@@ -29,21 +29,26 @@ public class MainVerticle extends AbstractVerticle {
     private Pool dbPool;
 
     public static void main(String[] args) {
+        System.out.println("Starting Vert.x application...");
         Vertx.vertx().deployVerticle(new MainVerticle());
     }
 
     @Override
     public void start(Promise<Void> startPromise) {
+        System.out.println("start() called");
         initializeDbPool().onComplete(dbInitResult -> {
             if (dbInitResult.succeeded()) {
+                System.out.println("Successfully initialized database connection pool");
                 startHttpServer(startPromise);
             } else {
+                System.out.println("Failed to initialize database connection pool");
                 startPromise.fail(dbInitResult.cause());
             }
         });
     }
 
     private void startHttpServer(Promise<Void> startPromise) {
+        System.out.println("startHttpServer() called");
         Router router = Router.router(vertx);
         router.route().handler(BodyHandler.create());
 
@@ -65,38 +70,44 @@ public class MainVerticle extends AbstractVerticle {
 
     private Future<Void> initializeDbPool() {
         Promise<Void> promise = Promise.promise();
-
-        String env = System.getenv("env");
-        String dbUrl = null;
     
-        if (env != null && env.equals("production")) {
-            dbUrl = System.getenv("DATABASE");
-        } else {
-            Dotenv dotenv = Dotenv.configure().load();
-            dbUrl = dotenv.get("DATABASE_URL").substring(5);
+        System.out.println("Loading .env file...");
+        Dotenv dotenv = Dotenv.load();
+    
+        System.out.println("Getting DATABASE_URL...");
+        String dbUrl = dotenv.get("DATABASE_URL");
+    
+        if (dbUrl == null) {
+            System.err.println("DATABASE_URL not found");
+            promise.fail(new RuntimeException("DATABASE_URL not found"));
+            return promise.future();
         }
-
+    
+        System.out.println("Parsing DATABASE_URL...");
+    
         String username = "";
         String password = "";
         String host = "";
         int port = 0;
         String database = "";
-
-        Pattern pattern = Pattern.compile("postgresql://(.*):(\\d+)/([^\\?]*)\\?user=([^&]*)&password=(.*)");
+    
+        Pattern pattern = Pattern.compile("postgres://(.*):(.*?)@(.*):(\\d+)/(\\w+)");
         Matcher matcher = pattern.matcher(dbUrl);
-
+    
         if (matcher.find()) {
-            host = matcher.group(1);
-            port = Integer.parseInt(matcher.group(2));
-            database = matcher.group(3);
-            username = matcher.group(4);
-            password = matcher.group(5);
+            username = matcher.group(1);
+            password = matcher.group(2);
+            host = matcher.group(3);
+            port = Integer.parseInt(matcher.group(4));
+            database = matcher.group(5);
         } else {
             System.err.println("Unable to parse DATABASE_URL");
             promise.fail(new RuntimeException("Unable to parse DATABASE_URL"));
             return promise.future();
         }
-
+    
+        System.out.println("Creating database connection pool...");
+    
         PgConnectOptions connectOptions = new PgConnectOptions()
                 .setPort(port)
                 .setHost(host)
@@ -105,12 +116,12 @@ public class MainVerticle extends AbstractVerticle {
                 .setPassword(password)
                 .setSsl(true)
                 .setTrustAll(true);
-
+    
         PoolOptions poolOptions = new PoolOptions()
                 .setMaxSize(5);
-
+    
         dbPool = PgPool.pool(vertx, connectOptions, poolOptions);
-
+    
         dbPool.query("SELECT 1")
             .execute(ar -> {
                 if (ar.failed()) {
@@ -121,11 +132,12 @@ public class MainVerticle extends AbstractVerticle {
                     promise.complete();
                 }
             });
-        
+    
         return promise.future();
     }
 
     private void handleAllData(RoutingContext routingContext) {
+        System.out.println("handleAllData() called");
         HttpServerResponse response = routingContext.response();
         response.putHeader("Content-Type", "application/json");
     
@@ -158,6 +170,7 @@ public class MainVerticle extends AbstractVerticle {
     }
 
     private void handleDbTest(RoutingContext routingContext) {
+        System.out.println("handleDbTest() called");
         HttpServerResponse response = routingContext.response();
         if (dbPool == null) {
             response.putHeader("content-type", "application/json").end(Json.encodePrettily(
