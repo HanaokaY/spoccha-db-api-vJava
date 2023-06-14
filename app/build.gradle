@@ -17,6 +17,8 @@ dependencies {
     implementation 'io.github.cdimascio:java-dotenv:5.2.2'
     implementation 'org.postgresql:postgresql:42.2.23'
     implementation 'org.slf4j:slf4j-api:1.7.32'
+    implementation 'ch.qos.logback:logback-classic:1.2.3'
+    implementation 'com.zaxxer:HikariCP:3.4.5'
 }
 
 java {

@@ -1,5 +1,7 @@
 package spoccha.db.api.vjava;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -7,63 +9,68 @@ import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
-import io.vertx.pgclient.PgConnectOptions;
-import io.vertx.pgclient.PgPool;
-import io.vertx.sqlclient.Pool;
-import io.vertx.sqlclient.PoolOptions;
-import io.vertx.sqlclient.Row;
-import io.vertx.sqlclient.RowSet;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.github.cdimascio.dotenv.Dotenv;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import io.vertx.core.Future;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MainVerticle extends AbstractVerticle {
 
     private Map<Integer, Map<Integer, Map<String, Object>>> allData;
-    private Pool dbPool;
+    private HikariDataSource ds;
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(MainVerticle.class);
 
     public static void main(String[] args) {
-        System.out.println("Starting Vert.x application...");
+        LOGGER.info("Vert.xアプリケーションを開始します...");
         Vertx.vertx().deployVerticle(new MainVerticle());
     }
 
     @Override
     public void start(Promise<Void> startPromise) {
-        System.out.println("start() called");
+        LOGGER.info("start()が呼び出されました");
         startHttpServer(startPromise);
     }
 
 
     private void startHttpServer(Promise<Void> startPromise) {
-        System.out.println("startHttpServer() called");
+        LOGGER.info("startHttpServer()が呼び出されました");
         Router router = Router.router(vertx);
+        LOGGER.info("ルーティングを設定します...");
         router.route().handler(BodyHandler.create());
-    
+        LOGGER.info("BodyHandlerを設定しました");
+
         router.get("/api/v1/gym_informations/all_data").handler(this::handleAllData);
-    
+
         router.get("/api/v1/dbtest").handler(this::handleDbTest);
-    
+
         HttpServer server = vertx.createHttpServer();
+        LOGGER.info("HTTPサーバーを作成しました");
         int port = Integer.parseInt(System.getenv("PORT"));
-        System.out.println("PORT => "+port);
-        
+        LOGGER.info("PORT番号 => {}", port);
+
         initializeDbPool().onComplete(dbInitResult -> {
             if (dbInitResult.succeeded()) {
                 server.requestHandler(router).listen(port, result -> {
                     if (result.succeeded()) {
-                        System.out.println("Server started on port " + port);
+                        LOGGER.info("サーバーがポート{}で起動しました", port);
                         startPromise.complete();
+                        LOGGER.info("startHttpServer()が正常に完了しました");
                     } else {
+                        LOGGER.error("サーバーの起動に失敗しました", result.cause());
                         startPromise.fail(result.cause());
                     }
                 });
             } else {
+                LOGGER.error("データベースプールの初期化に失敗しました", dbInitResult.cause());
                 startPromise.fail(dbInitResult.cause());
             }
         });
@@ -77,24 +84,24 @@ public class MainVerticle extends AbstractVerticle {
         boolean isProduction = (dyno != null && !dyno.isEmpty());
         String dbUrl = null;
 
-        System.out.println("Getting DATABASE_URL...");
+        LOGGER.info("DATABASE_URLを取得します...");
 
         if (isProduction) {
-            System.out.println("Loading DATABASE_URL from environment variable...");
+            LOGGER.info("環境変数からDATABASE_URLを読み込みます...");
             dbUrl = System.getenv("DATABASE_URL");
         } else {
-            System.out.println("Loading .env file...");
+            LOGGER.info(".envファイルを読み込みます...");
             Dotenv dotenv = Dotenv.configure().load();
             dbUrl = dotenv.get("DATABASE_URL");
         }
     
         if (dbUrl == null) {
-            System.err.println("DATABASE_URL not found");
-            promise.fail(new RuntimeException("DATABASE_URL not found"));
+            LOGGER.error("DATABASE_URLが見つかりません");
+            promise.fail(new RuntimeException("DATABASE_URLが見つかりません"));
             return promise.future();
         }
     
-        System.out.println("Parsing DATABASE_URL...");
+        LOGGER.info("DATABASE_URLを解析します...");
     
         String username = "";
         String password = "";
@@ -112,105 +119,76 @@ public class MainVerticle extends AbstractVerticle {
             port = Integer.parseInt(matcher.group(4));
             database = matcher.group(5);
         } else {
-            System.err.println("Unable to parse DATABASE_URL");
-            promise.fail(new RuntimeException("Unable to parse DATABASE_URL"));
+            LOGGER.error("DATABASE_URLの解析に失敗しました");
+            promise.fail(new RuntimeException("DATABASE_URLの解析に失敗しました"));
             return promise.future();
         }
 
         int check_port = Integer.parseInt(System.getenv("PORT"));
-        System.out.println("check_port => "+check_port);
+        LOGGER.info("check_port => {}", check_port);
     
-        System.out.println("DATABASE_URL check");
-        System.out.println("username => "+username);
-        System.out.println("password => "+password);
-        System.out.println("host => "+host);
-        System.out.println("port => "+port);
-        System.out.println("database => "+database);
+        LOGGER.info("DATABASE_URLの確認");
+        LOGGER.info("username => {}", username);
+        LOGGER.info("password => {}", password);
+        LOGGER.info("host => {}", host);
+        LOGGER.info("port => {}", port);
+        LOGGER.info("database => {}", database);
 
-        System.out.println("Creating database connection pool...");
+        LOGGER.info("データベース接続プールを作成します...");
     
-        PgConnectOptions connectOptions = new PgConnectOptions()
-                .setPort(port)
-                .setHost(host)
-                .setDatabase(database)
-                .setUser(username)
-                .setPassword(password)
-                .setSsl(true)
-                .setTrustAll(true);
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(String.format("jdbc:postgresql://%s:%d/%s", host, port, database));
+        config.setUsername(username);
+        config.setPassword(password);
+        config.addDataSourceProperty("sslmode", "require");
+        config.setMaximumPoolSize(5);
+
+        ds = new HikariDataSource(config);
     
-        PoolOptions poolOptions = new PoolOptions()
-                .setMaxSize(5);
-    
-        dbPool = PgPool.pool(vertx, connectOptions, poolOptions);
-    
-        dbPool.query("SELECT 1")
-            .execute(ar -> {
-                if (ar.failed()) {
-                    System.err.println("Failed to establish a connection with the database: " + ar.cause().getMessage());
-                    promise.fail(ar.cause());
-                } else {
-                    System.out.println("Successfully connected to the database");
-                    promise.complete();
-                }
-            });
+        try {
+            ds.getConnection().close();
+            LOGGER.info("データベースへの接続に成功しました");
+            promise.complete();
+        } catch (SQLException e) {
+            LOGGER.error("データベースへの接続に失敗しました: ", e);
+            promise.fail(e);
+        }
     
         return promise.future();
     }
 
     private void handleAllData(RoutingContext routingContext) {
-        System.out.println("handleAllData() called");
+        LOGGER.info("handleAllData()が呼び出されました");
         HttpServerResponse response = routingContext.response();
         response.putHeader("Content-Type", "application/json");
     
-        if (dbPool == null) {
-            System.err.println("Failed to establish a connection with the database");
+        if (ds == null) {
+            LOGGER.error("データベースへの接続に失敗しました");
             response.setStatusCode(500).end();
             return;
         }
-    
-        dbPool.query("SELECT * FROM prefectures p " +
-                "JOIN cities c ON p.id = c.prefecture_id " +
-                "JOIN gyms g ON c.id = g.city_id " +
-                "JOIN schedule_urls s ON g.id = s.gym_id")
-                .execute(ar -> {
-                    if (ar.failed()) {
-                        System.err.println("Failed to fetch data from the database: " + ar.cause().getMessage());
-                        response.setStatusCode(500).end();
-                    } else {
-                        RowSet<Row> result = ar.result();
-                        Map<String, Object> responseMap = new HashMap<>();
-
-                        for (Row row : result) {
-                            // process each row and build responseMap
-                        }
-
-                        String responseJson = Json.encode(responseMap);
-                        response.end(responseJson);
-                    }
-                });
+        // テスト完了後、all_dataを実装する。
     }
 
     private void handleDbTest(RoutingContext routingContext) {
-        System.out.println("handleDbTest() called");
+        LOGGER.info("handleDbTest()が呼び出されました");
         HttpServerResponse response = routingContext.response();
-        if (dbPool == null) {
+        if (ds == null) {
             response.putHeader("content-type", "application/json").end(Json.encodePrettily(
-                    new JsonObject().put("status", "failure").put("message", "Failed to establish a connection with the database")
+                    new JsonObject().put("status", "failure").put("message", "データベースへの接続に失敗しました")
             ));
             return;
         }
     
-        dbPool.query("SELECT 1")
-            .execute(ar -> {
-                if (ar.failed()) {
-                    response.putHeader("content-type", "application/json").end(Json.encodePrettily(
-                            new JsonObject().put("status", "failure").put("message", "Failed to establish a connection with the database: " + ar.cause().getMessage())
-                    ));
-                } else {
-                    response.putHeader("content-type", "application/json").end(Json.encodePrettily(
-                            new JsonObject().put("status", "success").put("message", "Successfully connected to the database")
-                    ));
-                }
-            });
+        try {
+            ds.getConnection().close();
+            response.putHeader("content-type", "application/json").end(Json.encodePrettily(
+                    new JsonObject().put("status", "success").put("message", "データベースへの接続に成功しました")
+            ));
+        } catch (SQLException e) {
+            response.putHeader("content-type", "application/json").end(Json.encodePrettily(
+                    new JsonObject().put("status", "failure").put("message", "データベースへの接続に失敗しました: " + e.getMessage())
+            ));
+        }
     }
 }
