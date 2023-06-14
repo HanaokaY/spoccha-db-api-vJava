@@ -116,7 +116,7 @@ public class MainVerticle extends AbstractVerticle {
             return promise.future();
         }
 
-        int check_port = Integer.parseInt(System.getenv().get("PORT"));
+        int check_port = Integer.parseInt(System.getenv("PORT"));
         System.out.println("check_port => "+check_port);
     
         System.out.println("DATABASE_URL check");
