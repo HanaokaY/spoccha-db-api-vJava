@@ -129,9 +129,9 @@ public class MainVerticle extends AbstractVerticle {
                 .setHost(host)
                 .setDatabase(database)
                 .setUser(username)
-                .setPassword(password);
-                // .setSsl(true)
-                // .setTrustAll(true);
+                .setPassword(password)
+                .setSsl(true)
+                .setTrustAll(true);
     
         PoolOptions poolOptions = new PoolOptions()
                 .setMaxSize(5);
