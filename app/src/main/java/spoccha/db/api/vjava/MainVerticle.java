@@ -58,6 +58,7 @@ public class MainVerticle extends AbstractVerticle {
 
         HttpServer server = vertx.createHttpServer();
         int port = Integer.parseInt(System.getenv().get("PORT"));
+        System.out.println("PORT => "+port);
         server.requestHandler(router).listen(port, result -> {
             if (result.succeeded()) {
                 System.out.println("Server started on port " + port);
