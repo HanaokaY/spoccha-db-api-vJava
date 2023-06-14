@@ -57,7 +57,7 @@ public class MainVerticle extends AbstractVerticle {
         router.get("/api/v1/dbtest").handler(this::handleDbTest);
 
         HttpServer server = vertx.createHttpServer();
-        int port = Integer.parseInt(System.getenv().get("PORT"));
+        int port = Integer.parseInt(System.getenv("PORT"));
         System.out.println("PORT => "+port);
         server.requestHandler(router).listen(port, result -> {
             if (result.succeeded()) {
