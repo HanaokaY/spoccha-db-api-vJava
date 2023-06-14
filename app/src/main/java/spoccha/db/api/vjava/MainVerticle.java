@@ -36,38 +36,39 @@ public class MainVerticle extends AbstractVerticle {
     @Override
     public void start(Promise<Void> startPromise) {
         System.out.println("start() called");
-        initializeDbPool().onComplete(dbInitResult -> {
-            if (dbInitResult.succeeded()) {
-                System.out.println("Successfully initialized database connection pool");
-                startHttpServer(startPromise);
-            } else {
-                System.out.println("Failed to initialize database connection pool");
-                startPromise.fail(dbInitResult.cause());
-            }
-        });
+        startHttpServer(startPromise);
     }
+
 
     private void startHttpServer(Promise<Void> startPromise) {
         System.out.println("startHttpServer() called");
         Router router = Router.router(vertx);
         router.route().handler(BodyHandler.create());
-
+    
         router.get("/api/v1/gym_informations/all_data").handler(this::handleAllData);
-
+    
         router.get("/api/v1/dbtest").handler(this::handleDbTest);
-
+    
         HttpServer server = vertx.createHttpServer();
         int port = Integer.parseInt(System.getenv("PORT"));
         System.out.println("PORT => "+port);
-        server.requestHandler(router).listen(port, result -> {
-            if (result.succeeded()) {
-                System.out.println("Server started on port " + port);
-                startPromise.complete();
+        
+        initializeDbPool().onComplete(dbInitResult -> {
+            if (dbInitResult.succeeded()) {
+                server.requestHandler(router).listen(port, result -> {
+                    if (result.succeeded()) {
+                        System.out.println("Server started on port " + port);
+                        startPromise.complete();
+                    } else {
+                        startPromise.fail(result.cause());
+                    }
+                });
             } else {
-                startPromise.fail(result.cause());
+                startPromise.fail(dbInitResult.cause());
             }
         });
     }
+    
 
     private Future<Void> initializeDbPool() {
         Promise<Void> promise = Promise.promise();
